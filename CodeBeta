@@ -1,0 +1,119 @@
+#Extractor de información de sitios web
+#Por David Ruiz
+#Puedes usar mi script siempre y cuando me des créditos en mis redes sociales @viajatech
+
+#pip install requests beautifulsoup4 python-whois
+
+
+import requests
+from bs4 import BeautifulSoup
+import re
+import whois
+import time
+
+def get_emails(text):
+    email_pattern = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
+    return re.findall(email_pattern, text)
+
+def get_phone_numbers(text):
+    phone_pattern = r'\+?\d{1,3}[-.\s]?\(?\d{1,4}?\)?[-.\s]?\d{1,4}[-.\s]?\d{1,4}[-.\s]?\d{1,9}'
+    return re.findall(phone_pattern, text)
+
+def get_addresses(text):
+    address_pattern = r'\d{1,5}\s\w+\s\w+(\s\w+)?(\s\w+)?\s\w+,?\s?\w+,\s?\w+(\s\d{5})?'
+    return re.findall(address_pattern, text)
+
+def get_social_media_links(soup):
+    social_media_patterns = [
+        r'https?://(?:www\.)?facebook\.com/[a-zA-Z0-9_.-]+',
+        r'https?://(?:www\.)?twitter\.com/[a-zA-Z0-9_.-]+',
+        r'https?://(?:www\.)?instagram\.com/[a-zA-Z0-9_.-]+',
+        r'https?://(?:www\.)?linkedin\.com/in/[a-zA-Z0-9_.-]+',
+        r'https?://(?:www\.)?youtube\.com/[a-zA-Z0-9_.-]+',
+        r'https?://(?:www\.)?tiktok\.com/@[a-zA-Z0-9_.-]+',
+        r'https?://(?:www\.)?pinterest\.com/[a-zA-Z0-9_.-]+'
+    ]
+    social_links = []
+    for pattern in social_media_patterns:
+        social_links.extend(re.findall(pattern, str(soup)))
+
+    for tag in soup.find_all('a', href=True):
+        href = tag['href']
+        for pattern in social_media_patterns:
+            if re.match(pattern, href):
+                social_links.append(href)
+                break
+    return list(set(social_links))
+
+def get_domain_registration_info(domain):
+    attempts = 3
+    for attempt in range(attempts):
+        try:
+            domain_info = whois.whois(domain)
+            return {
+                "registrar": domain_info.registrar,
+                "creation_date": domain_info.creation_date,
+                "expiration_date": domain_info.expiration_date,
+                "name": domain_info.name,
+                "org": domain_info.org,
+                "address": domain_info.address,
+                "city": domain_info.city,
+                "state": domain_info.state,
+                "zipcode": domain_info.zipcode,
+                "country": domain_info.country,
+                "emails": domain_info.emails
+            }
+        except Exception as e:
+            print(f"Attempt {attempt + 1} failed: {e}")
+            time.sleep(2)
+    return None
+
+def extract_information(url):
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+        response = requests.get(url, headers=headers)
+        
+        if response.status_code != 200:
+            print(f"Failed to retrieve the website. Status code: {response.status_code}")
+            return
+
+        soup = BeautifulSoup(response.content, 'html.parser')
+        text = soup.get_text()
+
+        emails = get_emails(text)
+        phones = get_phone_numbers(text)
+        addresses = get_addresses(text)
+        social_media_links = get_social_media_links(soup)
+        
+        domain = url.split("//")[-1].split("/")[0]
+        domain_info = get_domain_registration_info(domain)
+
+        print("Emails found:")
+        for email in set(emails):
+            print(email)
+
+        print("\nPhone numbers found:")
+        for phone in set(phones):
+            print(phone)
+
+        print("\nAddresses found:")
+        for address in set(addresses):
+            print(address)
+
+        print("\nSocial media links found:")
+        for link in social_media_links:
+            print(link)
+
+        if domain_info:
+            print("\nDomain registration information:")
+            for key, value in domain_info.items():
+                print(f"{key}: {value}")
+
+    except requests.exceptions.RequestException as e:
+        print(f"An error occurred: {e}")
+
+if __name__ == "__main__":
+    url = input("Enter the website URL: ")
+    extract_information(url)
